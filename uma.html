@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Restriction Site Mutagenesis Planner</title>
+  <meta name="description" content="A Python tool that finds a restriction enzyme site in a DNA sequence and plans a one-base mutation that removes it.">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ==========================================================
+       Design tokens
+       ========================================================== */
+    :root {
+      --bg:        #f3f9fd;
+      --surface:   #ffffff;
+      --tint:      #e8f3fa;
+      --line:      #d3e3ef;
+
+      --ink:       #12263f;
+      --ink-soft:  #4d647f;
+
+      --teal:      #0b7f8c;
+      --teal-bg:   #c8f0ec;
+      --blue:      #3a5fcd;
+      --blue-bg:   #dde4ff;
+
+      --font-head: "Sora", system-ui, sans-serif;
+      --font-body: "Source Serif 4", Georgia, serif;
+      --font-code: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+
+      --radius:    12px;
+      --shadow:    0 1px 2px rgba(18, 38, 63, .05), 0 6px 20px rgba(18, 38, 63, .06);
+    }
+
+    /* ==========================================================
+       Base
+       ========================================================== */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: 4rem;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--font-body);
+      font-size: 1.1rem;
+      line-height: 1.7;
+    }
+
+    a {
+      color: var(--teal);
+    }
+
+    a:focus-visible {
+      outline: 2px solid var(--blue);
+      outline-offset: 3px;
+      border-radius: 2px;
+    }
+
+    p {
+      max-width: 44rem;
+      margin-bottom: 1rem;
+    }
+
+    code {
+      background: var(--tint);
+      color: var(--ink);
+      padding: .1em .4em;
+      border-radius: 6px;
+      font-family: var(--font-code);
+      font-size: .88em;
+    }
+
+    /* ==========================================================
+       Layout
+       ========================================================== */
+    .container {
+      max-width: 62rem;
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    section {
+      padding-top: 4.5rem;
+    }
+
+    h2 {
+      margin-bottom: 1.25rem;
+      color: var(--ink);
+      font-family: var(--font-head);
+      font-size: clamp(1.5rem, 3.5vw, 2rem);
+      font-weight: 600;
+      letter-spacing: -.01em;
+    }
+
+    h3 {
+      margin-bottom: .4rem;
+      color: var(--teal);
+      font-family: var(--font-head);
+      font-size: 1.05rem;
+      font-weight: 600;
+    }
+
+    ul {
+      max-width: 44rem;
+      padding-left: 1.25rem;
+    }
+
+    li {
+      margin-bottom: .6rem;
+    }
+
+    li::marker {
+      color: var(--teal);
+    }
+
+    /* ==========================================================
+       Header and hero
+       ========================================================== */
+    .hero {
+      padding-bottom: 5rem;
+      border-bottom: 1px solid var(--line);
+      background:
+        radial-gradient(48rem 24rem at 90% -10%, rgba(58, 95, 205, .16), transparent 65%),
+        radial-gradient(44rem 24rem at 0% 10%, rgba(11, 127, 140, .16), transparent 65%),
+        linear-gradient(180deg, #e6f4fb 0%, var(--bg) 100%);
+    }
+
+    .nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+      padding: 1.5rem 0;
+      font-family: var(--font-head);
+      font-size: .9rem;
+    }
+
+    .nav a {
+      color: var(--ink-soft);
+      text-decoration: none;
+    }
+
+    .nav a:hover {
+      color: var(--teal);
+    }
+
+    .hero-body {
+      margin-top: 3.5rem;
+    }
+
+    h1 {
+      max-width: 16ch;
+      font-family: var(--font-head);
+      font-size: clamp(2.2rem, 6vw, 4rem);
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -.02em;
+      background: linear-gradient(95deg, var(--ink) 10%, var(--teal) 60%, var(--blue));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .lead {
+      max-width: 38rem;
+      margin-top: 1.5rem;
+      color: var(--ink-soft);
+      font-size: 1.25rem;
+    }
+
+    /* ==========================================================
+       DNA strand (main visual)
+       ========================================================== */
+    .strand {
+      margin-top: 2.5rem;
+      color: var(--ink-soft);
+      font-family: var(--font-code);
+      font-size: clamp(1rem, 3.4vw, 1.9rem);
+      font-weight: 500;
+      letter-spacing: .18em;
+      word-break: break-all;
+    }
+
+    .strand mark {
+      padding: .1em .15em;
+      border-radius: 6px;
+      background: var(--teal-bg);
+      color: var(--teal);
+      box-shadow: 0 0 0 1px rgba(11, 127, 140, .35);
+    }
+
+    .strand mark.changed {
+      background: var(--blue-bg);
+      color: var(--blue);
+      box-shadow: 0 0 0 1px rgba(58, 95, 205, .35);
+    }
+
+    .strand--small {
+      margin-top: 0;
+      font-size: clamp(.8rem, 2.6vw, 1.05rem);
+      letter-spacing: .1em;
+    }
+
+    .strand-note {
+      margin-top: .75rem;
+      color: var(--ink-soft);
+      font-family: var(--font-head);
+      font-size: .85rem;
+    }
+
+    /* ==========================================================
+       Cards and grids
+       ========================================================== */
+    .card {
+      padding: 1.25rem 1.5rem;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--ink-soft);
+      font-size: 1rem;
+    }
+
+    .grid {
+      display: grid;
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+
+    .grid--4 {
+      grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    }
+
+    .grid--2 {
+      grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+      max-width: 44rem;
+      margin-top: 1.5rem;
+    }
+
+    /* ==========================================================
+       Tables
+       ========================================================== */
+    .table-wrap {
+      max-width: 44rem;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 1rem;
+    }
+
+    th,
+    td {
+      padding: .8rem 1.1rem;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--tint);
+      color: var(--teal);
+      font-family: var(--font-head);
+      font-size: .9rem;
+      font-weight: 600;
+    }
+
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    /* ==========================================================
+       Steps and timeline
+       ========================================================== */
+    .steps {
+      max-width: 44rem;
+      margin-left: .9rem;
+      padding: 0;
+      border-left: 2px solid var(--line);
+      list-style: none;
+      counter-reset: step;
+    }
+
+    .steps li {
+      position: relative;
+      margin: 0;
+      padding: 0 0 1.5rem 2.25rem;
+      counter-increment: step;
+    }
+
+    .steps li::before {
+      content: counter(step);
+      position: absolute;
+      top: 0;
+      left: -.95rem;
+      display: grid;
+      place-items: center;
+      width: 1.8rem;
+      height: 1.8rem;
+      border: 2px solid var(--teal);
+      border-radius: 50%;
+      background: var(--bg);
+      color: var(--teal);
+      font-family: var(--font-head);
+      font-size: .8rem;
+      font-weight: 600;
+    }
+
+    .steps p {
+      margin: 0;
+      color: var(--ink-soft);
+      font-size: 1rem;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 1rem;
+      max-width: 44rem;
+      padding: 0;
+      list-style: none;
+    }
+
+    .timeline li {
+      margin: 0;
+      border-left: 4px solid var(--blue);
+    }
+
+    /* ==========================================================
+       Code blocks
+       ========================================================== */
+    .file-label {
+      display: inline-block;
+      margin-top: 1.5rem;
+      padding: .3rem .8rem;
+      border: 1px solid var(--line);
+      border-bottom: none;
+      border-radius: 8px 8px 0 0;
+      background: var(--tint);
+      color: var(--ink-soft);
+      font-family: var(--font-code);
+      font-size: .8rem;
+    }
+
+    pre {
+      margin: 0 0 1.5rem;
+      padding: 1.25rem;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 0 var(--radius) var(--radius) var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      color: var(--ink);
+      font-family: var(--font-code);
+      font-size: .85rem;
+      line-height: 1.65;
+      tab-size: 4;
+    }
+
+    pre code {
+      padding: 0;
+      background: none;
+      font-size: inherit;
+    }
+
+    pre.output {
+      border-left: 4px solid var(--teal);
+      border-radius: var(--radius);
+    }
+
+    .before-after {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+      gap: 1rem;
+      margin: 1.5rem 0;
+    }
+
+    .before-after .card {
+      overflow-x: auto;
+    }
+
+    /* ==========================================================
+       File tree
+       ========================================================== */
+    .tree {
+      max-width: 44rem;
+      margin-bottom: 1.5rem;
+      padding: 1.25rem 1.5rem;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      color: var(--ink-soft);
+      font-family: var(--font-code);
+      font-size: .85rem;
+      line-height: 1.8;
+    }
+
+    /* ==========================================================
+       Footer
+       ========================================================== */
+    .footer {
+      margin-top: 6rem;
+      padding: 2rem 1.5rem;
+      border-top: 1px solid var(--line);
+      background: var(--tint);
+      color: var(--ink-soft);
+      font-family: var(--font-head);
+      font-size: .85rem;
+      text-align: center;
+    }
+
+    .footer p {
+      margin: 0 auto;
+    }
+
+    /* ==========================================================
+       Responsive and motion
+       ========================================================== */
+    @media (max-width: 600px) {
+      .hero { padding-bottom: 3rem; }
+      .hero-body { margin-top: 2.5rem; }
+      section { padding-top: 3.5rem; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ========== Hero ========== -->
+  <header class="hero">
+    <div class="container">
+      <nav class="nav" aria-label="Page sections">
+        <a href="#about">About</a>
+        <a href="#how">How it works</a>
+        <a href="#demo">Sample run</a>
+        <a href="#code">Code</a>
+        <a href="#testing">Testing</a>
+        <a href="#progress">Progress</a>
+        <a href="#next">What's next</a>
+      </nav>
+
+      <div class="hero-body">
+        <h1>Restriction Site Mutagenesis Planner</h1>
+        <p class="lead">
+          Enter a DNA sequence and pick an enzyme. The planner finds the cut site
+          and proposes a single-base change that removes it.
+        </p>
+
+        <div class="strand" role="img"
+             aria-label="DNA sequence ATGCGT GAATTC CGATGGATCCATGC with the EcoRI site GAATTC highlighted">
+          <span>ATGCGT</span><mark>GAATTC</mark><span>CGATGGATCCATGC</span>
+        </div>
+        <p class="strand-note">EcoRI recognition site at position 7</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- ========== About ========== -->
+    <section id="about">
+      <h2>The problem</h2>
+      <p>
+        Restriction enzymes cut DNA at short, specific sequences called recognition sites.
+        EcoRI, for example, cuts at <code>GAATTC</code>. In cloning experiments you sometimes
+        need an enzyme to leave a particular site alone.
+      </p>
+      <p>
+        One way is a point mutation: change a single base inside the site and the enzyme no longer
+        recognises it. This project automates finding that site and planning the change.
+      </p>
+
+      <div class="grid grid--4">
+        <div class="card">
+          <h3>Validate</h3>
+          <p>Accept a DNA sequence and reject anything that isn't A, T, G or C.</p>
+        </div>
+        <div class="card">
+          <h3>Describe</h3>
+          <p>Report the length, GC content and reverse complement.</p>
+        </div>
+        <div class="card">
+          <h3>Locate</h3>
+          <p>Find every occurrence of the chosen enzyme's site.</p>
+        </div>
+        <div class="card">
+          <h3>Mutate</h3>
+          <p>Propose a one-base change that destroys the site and show the new sequence.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== Enzymes ========== -->
+    <section id="enzymes">
+      <h2>Supported enzymes</h2>
+      <p>
+        A restriction enzyme recognises a short palindromic sequence and cuts there. A point mutation
+        inside that sequence means the enzyme no longer recognises it.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Enzyme</th><th>Recognition site</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>EcoRI</td><td><code>GAATTC</code></td></tr>
+            <tr><td>BamHI</td><td><code>GGATCC</code></td></tr>
+            <tr><td>HindIII</td><td><code>AAGCTT</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ========== Method ========== -->
+    <section id="how">
+      <h2>How it works</h2>
+      <ol class="steps">
+        <li>
+          <h3>Enzyme dictionary</h3>
+          <p>A dictionary maps each enzyme name to its recognition sequence.</p>
+        </li>
+        <li>
+          <h3>Input and validation</h3>
+          <p>
+            The sequence is uppercased and stripped of spaces. It is rejected if it is empty
+            or contains anything other than A, T, G or C.
+          </p>
+        </li>
+        <li>
+          <h3>Sequence properties</h3>
+          <p>Prints the length, GC percentage (rounded to 2 decimals) and the reverse complement using Biopython.</p>
+        </li>
+        <li>
+          <h3>Enzyme selection</h3>
+          <p>If the enzyme name isn't in the dictionary, the program prints "Invalid enzyme".</p>
+        </li>
+        <li>
+          <h3>Site search</h3>
+          <p>
+            A window the length of the site slides along the sequence and collects every start
+            position that matches. Positions are shown 1-based.
+          </p>
+        </li>
+        <li>
+          <h3>Mutation search</h3>
+          <p>
+            For the first site found, it tries the other three bases at each position inside the site
+            and checks whether the site is now different.
+          </p>
+        </li>
+        <li>
+          <h3>Output</h3>
+          <p>The first disrupting mutation is printed with its position, the mutated DNA and "Selected site disrupted".</p>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ========== Sample run ========== -->
+    <section id="demo">
+      <h2>Sample run</h2>
+      <p>Input sequence <code>ATGCGTGAATTCCGATGGATCCATGC</code> with enzyme <code>EcoRI</code>:</p>
+
+      <pre class="output"><code>Length: 26 GC%: 50.0
+Reverse complement: GCATGGATCCATCGGAATTCACGCAT
+Site positions: [7]
+Mutation: G -&gt; A at 7
+Mutated DNA: ATGCGTAAATTCCGATGGATCCATGC
+Selected site disrupted</code></pre>
+
+      <div class="before-after">
+        <div class="card">
+          <h3>Before</h3>
+          <div class="strand strand--small">
+            <span>ATGCGT</span><mark>GAATTC</mark><span>CGATGGATCCATGC</span>
+          </div>
+        </div>
+        <div class="card">
+          <h3>After</h3>
+          <div class="strand strand--small">
+            <span>ATGCGT</span><mark class="changed">AAATTC</mark><span>CGATGGATCCATGC</span>
+          </div>
+        </div>
+      </div>
+
+      <p>
+        The EcoRI site <code>GAATTC</code> at position 7 became <code>AAATTC</code>,
+        which EcoRI no longer recognises.
+      </p>
+    </section>
+
+    <!-- ========== Code ========== -->
+    <section id="code">
+      <h2>The code</h2>
+      <p>
+        The project grew in stages. All versions are shown below, from the first working planner to the
+        final Biopython version. Run any of them with <code>python3 filename.py</code>.
+      </p>
+
+      <div class="tree" aria-label="Project folder structure">
+        final/<br>
+        &nbsp;&nbsp;Restriction_Site_Mutagenesis_Planner_Project2/<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;mutagenesis_planner.py<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;README.txt<br>
+        &nbsp;&nbsp;project_update_3/<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;project_update_3.py<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;Project progress update 3.pdf<br>
+        &nbsp;&nbsp;Project update 4/<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;project update 4 final code.py<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;Project update 4.pdf
+      </div>
+
+      <h3>Project update 2: first planner</h3>
+      <span class="file-label">mutagenesis_planner.py</span>
+      <pre><code># Restriction Site Mutagenesis Planner
+
+sites = {&quot;EcoRI&quot;: &quot;GAATTC&quot;, &quot;BamHI&quot;: &quot;GGATCC&quot;, &quot;HindIII&quot;: &quot;AAGCTT&quot;}
+
+dna = input(&quot;DNA sequence: &quot;).upper()
+enzyme = input(&quot;Enzyme (EcoRI/BamHI/HindIII): &quot;)
+
+if set(dna) - set(&quot;ATGC&quot;):
+    print(&quot;Invalid DNA sequence&quot;)
+elif enzyme not in sites:
+    print(&quot;Invalid enzyme&quot;)
+elif sites[enzyme] not in dna:
+    print(&quot;Restriction site not found&quot;)
+else:
+    site = sites[enzyme]
+    pos = dna.find(site)
+    new = dna[:pos] + &quot;C&quot; + dna[pos + 1:]
+
+    print(&quot;Original:&quot;, dna)
+    print(&quot;Mutated: &quot;, new)
+    print(&quot;Position:&quot;, pos + 1)
+
+    if site not in new:
+        print(&quot;Restriction site removed&quot;)
+    else:
+        print(&quot;Restriction site still present&quot;)</code></pre>
+
+      <span class="file-label">README.txt</span>
+      <pre><code>Restriction Site Mutagenesis Planner - Project Progress Update 2
+
+Member 1: P. Umalakshmi - SE25UBIT069 (Core Bio-logic)
+Member 2: Valligatla Tejasree - SE25UBIT072 (Software Architecture)
+
+Run:
+python3 mutagenesis_planner.py
+
+The program validates DNA, finds a selected restriction site, makes a simple
+single-base change, and checks whether the site was removed. It uses basic
+Python concepts from the lectures: dictionary, strings, input/output,
+if/elif/else, find(), and slicing.</code></pre>
+
+      <h3>Project update 3: core bio-logic</h3>
+      <span class="file-label">project_update_3.py</span>
+      <pre><code>sites = {&quot;EcoRI&quot;: &quot;GAATTC&quot;, &quot;BamHI&quot;: &quot;GGATCC&quot;, &quot;HindIII&quot;: &quot;AAGCTT&quot;}
+
+dna = input(&quot;DNA sequence: &quot;).upper()
+enzyme = input(&quot;Enzyme (EcoRI/BamHI/HindIII): &quot;)
+
+if set(dna) - set(&quot;ATGC&quot;):
+    print(&quot;Invalid DNA sequence&quot;)
+elif enzyme not in sites:
+    print(&quot;Invalid enzyme&quot;)
+elif sites[enzyme] not in dna:
+    print(&quot;Restriction site not found&quot;)
+else:
+    site = sites[enzyme]
+    pos = dna.find(site)
+
+    new = dna[:pos] + &quot;C&quot; + dna[pos + 1:]
+
+    print(&quot;Original:&quot;, dna)
+    print(&quot;Mutated: &quot;, new)
+    print(&quot;Position:&quot;, pos + 1)
+
+    if site not in new:
+        print(&quot;Restriction site removed&quot;)
+    else:
+        print(&quot;Restriction site still present&quot;)</code></pre>
+
+      <h3>Project update 4: final version</h3>
+      <p>Adds Biopython for GC content and reverse complement. Install it with <code>conda install biopython -c conda-forge</code>.</p>
+      <span class="file-label">project update 4 final code.py</span>
+      <pre><code>from Bio.Seq import Seq
+from Bio.SeqUtils import gc_fraction
+
+enzymes = {&quot;EcoRI&quot;: &quot;GAATTC&quot;, &quot;BamHI&quot;: &quot;GGATCC&quot;, &quot;HindIII&quot;: &quot;AAGCTT&quot;}
+dna = input(&quot;DNA sequence: &quot;).upper().strip()
+
+if not dna or any(b not in &quot;ATGC&quot; for b in dna):
+    print(&quot;Invalid DNA sequence&quot;)
+else:
+    print(&quot;Length:&quot;, len(dna), &quot;GC%:&quot;, round(gc_fraction(Seq(dna))*100, 2))
+    print(&quot;Reverse complement:&quot;, Seq(dna).reverse_complement())
+    enzyme = input(&quot;Enzyme (EcoRI/BamHI/HindIII): &quot;).strip()
+
+    if enzyme not in enzymes:
+        print(&quot;Invalid enzyme&quot;)
+    else:
+        site = enzymes[enzyme]
+        positions = [i for i in range(len(dna)-len(site)+1) if dna[i:i+len(site)] == site]
+        print(&quot;Site positions:&quot;, [p+1 for p in positions])
+
+        if not positions:
+            print(&quot;Restriction site not found&quot;)
+        else:
+            pos = positions[0]
+            for i in range(pos, pos+len(site)):
+                for base in &quot;ATGC&quot;:
+                    if base != dna[i]:
+                        new = dna[:i] + base + dna[i+1:]
+                        if new[pos:pos+len(site)] != site:
+                            print(&quot;Mutation:&quot;, dna[i], &quot;-&gt;&quot;, base, &quot;at&quot;, i+1)
+                            print(&quot;Mutated DNA:&quot;, new)
+                            print(&quot;Selected site disrupted&quot;)
+                            break
+                else:
+                    continue
+                break</code></pre>
+    </section>
+
+    <!-- ========== Testing ========== -->
+    <section id="testing">
+      <h2>Testing</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Test input</th><th>Result</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Valid sequence with EcoRI</td><td>Site found at position 7, mutation proposed</td></tr>
+            <tr><td>Valid sequence with BamHI</td><td>Site found at position 17, G to A mutation proposed</td></tr>
+            <tr><td>Non-ATGC characters (<code>ATGCXX</code>)</td><td>"Invalid DNA sequence"</td></tr>
+            <tr><td>No chosen site (<code>ATGCCC</code>, EcoRI)</td><td>"Restriction site not found"</td></tr>
+            <tr><td>Unknown enzyme name</td><td>"Invalid enzyme"</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ========== Progress ========== -->
+    <section id="progress">
+      <h2>Project progress</h2>
+      <ol class="timeline">
+        <li class="card">
+          <h3>Update 2</h3>
+          <p>
+            First working version. Validates the DNA, finds the selected site, changes one base and checks
+            whether the site was removed. Uses a dictionary, strings, input and output, if/elif/else,
+            <code>find()</code> and slicing.
+          </p>
+        </li>
+        <li class="card">
+          <h3>Update 3</h3>
+          <p>
+            Core bio-logic finished and tested with <code>ATGCGTGAATTCCGATGGATCCATGC</code> and EcoRI.
+            Next step: link it to the software architecture and start on the web app.
+          </p>
+        </li>
+        <li class="card">
+          <h3>Update 4</h3>
+          <p>
+            Added Biopython for GC content and the reverse complement. The program now reports every site
+            position and searches all positions and bases for a mutation that works.
+          </p>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ========== Limitations ========== -->
+    <section id="limits">
+      <h2>Limitations</h2>
+      <ul>
+        <li>It doesn't check whether the mutation is silent, so it may change an amino acid if the site is in a coding region.</li>
+        <li>It mutates only the first occurrence. Other copies of the site remain.</li>
+        <li>It proposes the first valid mutation, not the best one, and lists no alternatives.</li>
+        <li>Only the forward strand is searched, and only three enzymes are included.</li>
+      </ul>
+    </section>
+
+    <!-- ========== Future scope ========== -->
+    <section id="next">
+      <h2>What's next</h2>
+      <ul>
+        <li>Translate the sequence with <code>Seq.translate()</code> and accept only silent mutations that leave the protein unchanged.</li>
+        <li>Show all possible mutations and let the user choose one.</li>
+        <li>Add more enzymes (XhoI, PstI, KpnI) and search the reverse complement strand.</li>
+        <li>Build a simple web interface for input and output.</li>
+      </ul>
+    </section>
+
+    <!-- ========== Conclusion ========== -->
+    <section id="conclusion">
+      <h2>Conclusion</h2>
+      <p>
+        The project combines core Python (dictionaries, loops, slicing, conditions) with Biopython to automate
+        a real molecular biology task: finding a restriction site and planning a point mutation that removes it.
+        The program validates its input, handles error cases and gives clear output.
+      </p>
+    </section>
+
+    <!-- ========== Team ========== -->
+    <section id="team">
+      <h2>Team</h2>
+      <div class="grid grid--2">
+        <div class="card">
+          <h3>P. Umalakshmi</h3>
+          <p>SE25UBIT069<br>Core bio-logic</p>
+        </div>
+        <div class="card">
+          <h3>Valligatla Tejasree</h3>
+          <p>SE25UBIT072<br>Software architecture</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <p>Restriction Site Mutagenesis Planner. Built with Python and Biopython.</p>
+  </footer>
+
+</body>
+
+</html>
